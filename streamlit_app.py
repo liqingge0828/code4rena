@@ -17,22 +17,67 @@ from dateutil import parser as dateparser
 CHART_COLOR_SCALE = "Tealgrn"
 
 
+def chart_is_dark() -> bool:
+    """Match Streamlit app light/dark (Settings → Theme)."""
+    try:
+        ctx = getattr(st, "context", None)
+        theme = getattr(ctx, "theme", None) if ctx is not None else None
+        base = getattr(theme, "base", None) if theme is not None else None
+        return base == "dark"
+    except Exception:
+        return False
+
+
 def apply_chart_colors(fig: go.Figure) -> go.Figure:
-    fig.update_layout(
-        template="plotly_white",
-        paper_bgcolor="rgba(248, 250, 252, 0.65)",
-        plot_bgcolor="rgba(241, 245, 249, 0.9)",
-        coloraxis_colorbar=dict(
-            thickness=14,
-            len=0.55,
-            title="",
-            tickfont=dict(size=14),
-        ),
-        font=dict(size=16),
-        hoverlabel=dict(font_size=15),
-    )
-    fig.update_xaxes(tickfont=dict(size=14), title_font=dict(size=15))
-    fig.update_yaxes(tickfont=dict(size=14), title_font=dict(size=15))
+    dark = chart_is_dark()
+    if dark:
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(15, 23, 42, 0.35)",
+            plot_bgcolor="rgba(15, 23, 42, 0.72)",
+            coloraxis_colorbar=dict(
+                thickness=14,
+                len=0.55,
+                title="",
+                tickfont=dict(size=14, color="#e2e8f0"),
+            ),
+            font=dict(size=16, color="#e2e8f0"),
+            hoverlabel=dict(
+                font_size=15,
+                bgcolor="#1e293b",
+                font_color="#f8fafc",
+                bordercolor="#334155",
+            ),
+        )
+        grid = "rgba(148, 163, 184, 0.22)"
+        fig.update_xaxes(
+            tickfont=dict(size=14, color="#cbd5e1"),
+            title_font=dict(size=15, color="#e2e8f0"),
+            gridcolor=grid,
+            zerolinecolor="rgba(148, 163, 184, 0.35)",
+        )
+        fig.update_yaxes(
+            tickfont=dict(size=14, color="#cbd5e1"),
+            title_font=dict(size=15, color="#e2e8f0"),
+            gridcolor=grid,
+            zerolinecolor="rgba(148, 163, 184, 0.35)",
+        )
+    else:
+        fig.update_layout(
+            template="plotly_white",
+            paper_bgcolor="rgba(248, 250, 252, 0.65)",
+            plot_bgcolor="rgba(241, 245, 249, 0.9)",
+            coloraxis_colorbar=dict(
+                thickness=14,
+                len=0.55,
+                title="",
+                tickfont=dict(size=14),
+            ),
+            font=dict(size=16),
+            hoverlabel=dict(font_size=15),
+        )
+        fig.update_xaxes(tickfont=dict(size=14), title_font=dict(size=15))
+        fig.update_yaxes(tickfont=dict(size=14), title_font=dict(size=15))
     return fig
 
 
@@ -345,7 +390,10 @@ with tab2:
         color_continuous_scale="Viridis",
     )
     fig.update_yaxes(tickformat="~s")
-    fig.update_traces(marker=dict(size=12, line=dict(width=0.4, color="white")))
+    _scatter_outline = "rgba(15,23,42,0.78)" if chart_is_dark() else "white"
+    fig.update_traces(
+        marker=dict(size=12, line=dict(width=0.4, color=_scatter_outline))
+    )
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_contest_breakdown")
     mx_c = positive_max(by_contest["total_payout_usd"])
