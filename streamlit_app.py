@@ -1,7 +1,4 @@
-# mypy: ignore-errors
-# pyright: reportGeneralTypeIssues=false, reportMissingImports=false
-# basedpyright: reportGeneralTypeIssues=false, reportMissingImports=false
-# pylint: disable=import-error
+"""Streamlit dashboard: Code4rena findings and contests from synced SQLite."""
 
 import sqlite3
 from pathlib import Path
@@ -18,20 +15,21 @@ CHART_COLOR_SCALE = "Tealgrn"
 
 
 def chart_is_dark() -> bool:
-    """Match Streamlit app light/dark (Settings → Theme)."""
+    """Return True when Streamlit theme base is dark (Settings → Theme)."""
     try:
         ctx = getattr(st, "context", None)
         theme = getattr(ctx, "theme", None) if ctx is not None else None
-        base = getattr(theme, "base", None) if theme is not None else None
-        return base == "dark"
-    except Exception:
+        theme_base = getattr(theme, "base", None) if theme is not None else None
+        return theme_base == "dark"
+    except (AttributeError, TypeError):
         return False
 
 
-def apply_chart_colors(fig: go.Figure) -> go.Figure:
+def apply_chart_colors(figure: go.Figure) -> go.Figure:
+    """Apply light or dark Plotly layout to match the Streamlit theme."""
     dark = chart_is_dark()
     if dark:
-        fig.update_layout(
+        figure.update_layout(
             template="plotly_dark",
             paper_bgcolor="rgba(15, 23, 42, 0.35)",
             plot_bgcolor="rgba(15, 23, 42, 0.72)",
@@ -50,20 +48,20 @@ def apply_chart_colors(fig: go.Figure) -> go.Figure:
             ),
         )
         grid = "rgba(148, 163, 184, 0.22)"
-        fig.update_xaxes(
+        figure.update_xaxes(
             tickfont=dict(size=14, color="#cbd5e1"),
             title_font=dict(size=15, color="#e2e8f0"),
             gridcolor=grid,
             zerolinecolor="rgba(148, 163, 184, 0.35)",
         )
-        fig.update_yaxes(
+        figure.update_yaxes(
             tickfont=dict(size=14, color="#cbd5e1"),
             title_font=dict(size=15, color="#e2e8f0"),
             gridcolor=grid,
             zerolinecolor="rgba(148, 163, 184, 0.35)",
         )
     else:
-        fig.update_layout(
+        figure.update_layout(
             template="plotly_white",
             paper_bgcolor="rgba(248, 250, 252, 0.65)",
             plot_bgcolor="rgba(241, 245, 249, 0.9)",
@@ -76,23 +74,25 @@ def apply_chart_colors(fig: go.Figure) -> go.Figure:
             font=dict(size=16),
             hoverlabel=dict(font_size=15),
         )
-        fig.update_xaxes(tickfont=dict(size=14), title_font=dict(size=15))
-        fig.update_yaxes(tickfont=dict(size=14), title_font=dict(size=15))
-    return fig
+        figure.update_xaxes(tickfont=dict(size=14), title_font=dict(size=15))
+        figure.update_yaxes(tickfont=dict(size=14), title_font=dict(size=15))
+    return figure
 
 
 def positive_max(series: pd.Series, default: float = 1.0) -> float:
-    m = series.max()
+    """Largest positive finite value in ``series``, or ``default`` if none."""
+    raw_max = series.max()
     try:
-        v = float(m)
+        value = float(raw_max)
     except (TypeError, ValueError):
         return default
-    if pd.isna(v) or v <= 0:
+    if pd.isna(value) or value <= 0:
         return default
-    return v
+    return value
 
 
 def format_compact(value: float) -> str:
+    """Format a number with k / m / b suffixes (two decimal places)."""
     sign = "-" if value < 0 else ""
     n = abs(float(value))
     if n >= 1_000_000_000:
@@ -105,6 +105,7 @@ def format_compact(value: float) -> str:
 
 
 def fmt_usd(value: float) -> str:
+    """Compact USD string (e.g. ``$1.23k``)."""
     return f"${format_compact(value)}"
 
 
@@ -115,6 +116,7 @@ def dataframe_pretty(
     height: int = 420,
     key: str,
 ) -> None:
+    """Render ``df`` with shared table styling (stretch, hide index, column_config)."""
     st.dataframe(
         df,
         width="stretch",
@@ -126,6 +128,7 @@ def dataframe_pretty(
 
 
 def parse_start_time(value: str) -> Any:
+    """Parse contest start_time to timezone-naive pandas Timestamp."""
     try:
         dt = dateparser.parse(str(value), fuzzy=True)
     except (ValueError, TypeError, OverflowError):
@@ -138,6 +141,7 @@ def parse_start_time(value: str) -> Any:
 
 @st.cache_data(show_spinner=False)
 def load_findings(path: str) -> tuple[Any, int, int]:
+    """Load findings joined to contests from SQLite; return counts for sidebar."""
     conn = sqlite3.connect(path)
     try:
         df = pd.read_sql_query(
@@ -160,22 +164,21 @@ def load_findings(path: str) -> tuple[Any, int, int]:
             conn,
         )
         cur = conn.cursor()
-        n_findings = int(cur.execute("SELECT COUNT(1) FROM findings").fetchone()[0])
-        n_contests = int(cur.execute("SELECT COUNT(1) FROM contests").fetchone()[0])
+        num_findings = int(cur.execute("SELECT COUNT(1) FROM findings").fetchone()[0])
+        num_contests = int(cur.execute("SELECT COUNT(1) FROM contests").fetchone()[0])
     finally:
         conn.close()
 
-    df["award_native"] = pd.to_numeric(
-        df["award_native"], errors="coerce"
-    ).fillna(0.0)  # pyright: ignore[reportAttributeAccessIssue]
-    df["award_usd"] = pd.to_numeric(
-        df["award_usd"], errors="coerce"
-    ).fillna(0.0)  # pyright: ignore[reportAttributeAccessIssue]
-    return df, n_findings, n_contests
+    nat = pd.to_numeric(df["award_native"], errors="coerce").fillna(0.0)
+    df["award_native"] = nat  # pyright: ignore[reportAttributeAccessIssue]
+    usd = pd.to_numeric(df["award_usd"], errors="coerce").fillna(0.0)
+    df["award_usd"] = usd  # pyright: ignore[reportAttributeAccessIssue]
+    return df, num_findings, num_contests
 
 
 @st.cache_data(show_spinner=False)
 def load_contest_dates(path: str) -> Any:
+    """Load contest id and parsed start_time for filtering and charts."""
     conn = sqlite3.connect(path)
     try:
         contests = pd.read_sql_query(
@@ -189,6 +192,7 @@ def load_contest_dates(path: str) -> Any:
 
 
 def severity_flags(fid: str) -> tuple[int, int, int]:
+    """Return (high, med_low, gas) indicator tuple for a finding id prefix."""
     fid = str(fid or "").upper()
     high = 1 if fid.startswith("H-") else 0
     med = 1 if fid.startswith("M-") or fid.startswith("L-") else 0
@@ -196,6 +200,8 @@ def severity_flags(fid: str) -> tuple[int, int, int]:
     return high, med, gas
 
 
+# Top-level Streamlit widgets use many locals; names are not UPPER_CASE constants.
+# pylint: disable=invalid-name
 st.set_page_config(page_title="Code4rena DB Viewer", layout="wide")
 st.markdown(
     """
@@ -268,10 +274,13 @@ if isinstance(date_range, tuple) and len(date_range) == 2 and all(date_range):
     start_date = pd.to_datetime(date_range[0])
     end_date = pd.to_datetime(date_range[1])
     filtered = filtered[
-        (filtered["contest_start"] >= start_date) & (filtered["contest_start"] <= end_date)
+        (filtered["contest_start"] >= start_date)
+        & (filtered["contest_start"] <= end_date)
     ]
 
-sponsors = sorted(x for x in filtered["contest_sponsor"].dropna().unique().tolist() if x)
+sponsors = sorted(
+    x for x in filtered["contest_sponsor"].dropna().unique().tolist() if x
+)
 selected_sponsors = st.sidebar.multiselect("Sponsors", sponsors)
 if selected_sponsors:
     filtered = filtered[filtered["contest_sponsor"].isin(selected_sponsors)]
@@ -295,20 +304,25 @@ filtered["high_all"] = flags.map(lambda x: x[0])
 filtered["med_all"] = flags.map(lambda x: x[1])
 filtered["gas_all"] = flags.map(lambda x: x[2])
 
-agg = (
-    filtered.groupby(
-        ["contest", "contest_title", "contest_sponsor", "repo", "contest_start", "handle", "handle_norm"],
-        as_index=False,
-    )
-    .agg(
-        native_amount=("award_native", "sum"),
-        usd_amount=("award_usd", "sum"),
-        total_reports=("finding", "count"),
-        high_all=("high_all", "sum"),
-        med_all=("med_all", "sum"),
-        gas_all=("gas_all", "sum"),
-        coins=("awardCoin", lambda s: list(s)),
-    )
+agg = filtered.groupby(
+    [
+        "contest",
+        "contest_title",
+        "contest_sponsor",
+        "repo",
+        "contest_start",
+        "handle",
+        "handle_norm",
+    ],
+    as_index=False,
+).agg(
+    native_amount=("award_native", "sum"),
+    usd_amount=("award_usd", "sum"),
+    total_reports=("finding", "count"),
+    high_all=("high_all", "sum"),
+    med_all=("med_all", "sum"),
+    gas_all=("gas_all", "sum"),
+    coins=("awardCoin", list),
 )
 agg["contest_report_repo"] = agg["repo"].fillna("")
 
@@ -319,7 +333,13 @@ col3.metric("Unique contests", f"{agg['contest'].nunique():,}")
 col4.metric("Total payouts (USD)", fmt_usd(agg["usd_amount"].sum()))
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Top Handles", "Contest Breakdown", "Data Table", "Monthly Income", "Yearly Income"]
+    [
+        "Top Handles",
+        "Contest Breakdown",
+        "Data Table",
+        "Monthly Income",
+        "Yearly Income",
+    ]
 )
 
 with tab1:
@@ -342,11 +362,13 @@ with tab1:
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_top_handles")
-    mx = positive_max(by_handle["usd_amount"])
+    payout_max = positive_max(by_handle["usd_amount"])
     show = pd.DataFrame(
         {
             "Handle": by_handle["handle_norm"],
-            "Share of max": (by_handle["usd_amount"] / mx * 100.0).clip(0.0, 100.0),
+            "Share of max": (
+                by_handle["usd_amount"] / payout_max * 100.0
+            ).clip(0.0, 100.0),
             "Payout (USD)": by_handle["usd_amount"].map(fmt_usd),
         }
     )
@@ -362,9 +384,7 @@ with tab1:
                 help="Payout vs the largest row in this table (colored bar)",
                 width="medium",
             ),
-            "Payout (USD)": st.column_config.TextColumn(
-                "Payout (USD)", width="small"
-            ),
+            "Payout (USD)": st.column_config.TextColumn("Payout (USD)", width="small"),
         },
         key="df_top_handles",
     )
@@ -390,22 +410,22 @@ with tab2:
         color_continuous_scale="Viridis",
     )
     fig.update_yaxes(tickformat="~s")
-    _scatter_outline = "rgba(15,23,42,0.78)" if chart_is_dark() else "white"
+    scatter_outline = "rgba(15,23,42,0.78)" if chart_is_dark() else "white"
     fig.update_traces(
-        marker=dict(size=12, line=dict(width=0.4, color=_scatter_outline))
+        marker=dict(size=12, line=dict(width=0.4, color=scatter_outline))
     )
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_contest_breakdown")
-    mx_c = positive_max(by_contest["total_payout_usd"])
+    contest_payout_max = positive_max(by_contest["total_payout_usd"])
     show = pd.DataFrame(
         {
             "Contest ID": by_contest["contest"].astype(str),
             "Contest": by_contest["contest_title"],
             "Sponsor": by_contest["contest_sponsor"],
             "Wardens": by_contest["unique_handles"].astype(int),
-            "Share of max": (by_contest["total_payout_usd"] / mx_c * 100.0).clip(
-                0.0, 100.0
-            ),
+            "Share of max": (
+                by_contest["total_payout_usd"] / contest_payout_max * 100.0
+            ).clip(0.0, 100.0),
             "Payout (USD)": by_contest["total_payout_usd"].map(fmt_usd),
         }
     )
@@ -429,9 +449,7 @@ with tab2:
                 help="Payout vs the largest row in this table",
                 width="small",
             ),
-            "Payout (USD)": st.column_config.TextColumn(
-                "Payout (USD)", width="small"
-            ),
+            "Payout (USD)": st.column_config.TextColumn("Payout (USD)", width="small"),
         },
         key="df_contest_breakdown",
     )
@@ -450,30 +468,30 @@ with tab3:
         "med_all",
         "gas_all",
     ]
-    base = agg[show_cols].sort_values(
+    agg_slice = agg[show_cols].sort_values(
         ["contest_start", "usd_amount"], ascending=[False, False]
     )
-    starts = pd.to_datetime(base["contest_start"], errors="coerce")
-    mx_u = positive_max(base["usd_amount"])
-    rep_max = int(base["total_reports"].fillna(0).max()) or 1
-    h_max = int(base["high_all"].fillna(0).max()) or 1
-    ml_max = int(base["med_all"].fillna(0).max()) or 1
-    g_max = int(base["gas_all"].fillna(0).max()) or 1
+    starts = pd.to_datetime(agg_slice["contest_start"], errors="coerce")
+    table_payout_max = positive_max(agg_slice["usd_amount"])
+    rep_max = int(agg_slice["total_reports"].fillna(0).max()) or 1
+    h_max = int(agg_slice["high_all"].fillna(0).max()) or 1
+    ml_max = int(agg_slice["med_all"].fillna(0).max()) or 1
+    g_max = int(agg_slice["gas_all"].fillna(0).max()) or 1
     show = pd.DataFrame(
         {
-            "Contest ID": base["contest"].astype(str),
-            "Contest": base["contest_title"],
-            "Sponsor": base["contest_sponsor"],
+            "Contest ID": agg_slice["contest"].astype(str),
+            "Contest": agg_slice["contest_title"],
+            "Sponsor": agg_slice["contest_sponsor"],
             "Start": starts,
-            "Handle": base["handle"],
-            "Share of max": (base["usd_amount"].astype(float) / mx_u * 100.0).clip(
-                0.0, 100.0
-            ),
-            "Payout (USD)": base["usd_amount"].map(fmt_usd),
-            "Reports": base["total_reports"].fillna(0).astype(int),
-            "High": base["high_all"].fillna(0).astype(int),
-            "Med/Low": base["med_all"].fillna(0).astype(int),
-            "Gas": base["gas_all"].fillna(0).astype(int),
+            "Handle": agg_slice["handle"],
+            "Share of max": (
+                agg_slice["usd_amount"].astype(float) / table_payout_max * 100.0
+            ).clip(0.0, 100.0),
+            "Payout (USD)": agg_slice["usd_amount"].map(fmt_usd),
+            "Reports": agg_slice["total_reports"].fillna(0).astype(int),
+            "High": agg_slice["high_all"].fillna(0).astype(int),
+            "Med/Low": agg_slice["med_all"].fillna(0).astype(int),
+            "Gas": agg_slice["gas_all"].fillna(0).astype(int),
         }
     )
     dataframe_pretty(
@@ -494,9 +512,7 @@ with tab3:
                 help="Payout vs the largest row in this table",
                 width="small",
             ),
-            "Payout (USD)": st.column_config.TextColumn(
-                "Payout (USD)", width="small"
-            ),
+            "Payout (USD)": st.column_config.TextColumn("Payout (USD)", width="small"),
             "Reports": st.column_config.ProgressColumn(
                 "Reports",
                 min_value=0,
@@ -536,10 +552,10 @@ with tab3:
 
 with tab4:
     st.subheader("Handle income by month (USD)")
-    m = agg.copy()
-    m["month"] = m["contest_start"].dt.to_period("M").astype(str)
+    agg_monthly = agg.copy()
+    agg_monthly["month"] = agg_monthly["contest_start"].dt.to_period("M").astype(str)
     monthly_income = (
-        m.groupby(["handle_norm", "month"], as_index=False)["usd_amount"]
+        agg_monthly.groupby(["handle_norm", "month"], as_index=False)["usd_amount"]
         .sum()
         .sort_values(["month", "usd_amount"], ascending=[False, False])
     )
@@ -550,12 +566,14 @@ with tab4:
         .sort_values("usd_amount", ascending=False)
         .head(top_n)
     )
-    mx_m = positive_max(top["usd_amount"])
+    month_payout_max = positive_max(top["usd_amount"])
     show = pd.DataFrame(
         {
             "Handle": top["handle_norm"],
             "Month": top["month"],
-            "Share of max": (top["usd_amount"] / mx_m * 100.0).clip(0.0, 100.0),
+            "Share of max": (
+                top["usd_amount"] / month_payout_max * 100.0
+            ).clip(0.0, 100.0),
             "Payout (USD)": top["usd_amount"].map(fmt_usd),
         }
     )
@@ -572,9 +590,7 @@ with tab4:
                 help="Vs largest payout in this month list",
                 width="small",
             ),
-            "Payout (USD)": st.column_config.TextColumn(
-                "Payout (USD)", width="small"
-            ),
+            "Payout (USD)": st.column_config.TextColumn("Payout (USD)", width="small"),
         },
         key="df_monthly_income",
     )
@@ -607,12 +623,14 @@ with tab5:
         .sort_values("usd_amount", ascending=False)
         .head(top_n)
     )
-    mx_y = positive_max(top["usd_amount"])
+    year_payout_max = positive_max(top["usd_amount"])
     show = pd.DataFrame(
         {
             "Handle": top["handle_norm"],
             "Year": top["year"],
-            "Share of max": (top["usd_amount"] / mx_y * 100.0).clip(0.0, 100.0),
+            "Share of max": (
+                top["usd_amount"] / year_payout_max * 100.0
+            ).clip(0.0, 100.0),
             "Payout (USD)": top["usd_amount"].map(fmt_usd),
         }
     )
@@ -629,9 +647,7 @@ with tab5:
                 help="Vs largest payout in this year list",
                 width="small",
             ),
-            "Payout (USD)": st.column_config.TextColumn(
-                "Payout (USD)", width="small"
-            ),
+            "Payout (USD)": st.column_config.TextColumn("Payout (USD)", width="small"),
         },
         key="df_yearly_income",
     )

@@ -1,4 +1,7 @@
+"""Export monthly and yearly handle payout CSVs from the synced SQLite database."""
+
 import sqlite3
+
 import pandas as pd
 from dateutil import parser as dateparser
 

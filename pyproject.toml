@@ -23,3 +23,17 @@ build-backend = "poetry.core.masonry.api"
 # `poetry install`, which otherwise fails with "No file/folder found for package".
 [tool.poetry]
 package-mode = false
+
+[dependency-groups]
+dev = [
+    "flake8 (>=7.3.0,<8.0.0)",
+    "pylint (>=4.0.5,<5.0.0)"
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.messages_control]
+disable = [
+    "use-dict-literal",
+]

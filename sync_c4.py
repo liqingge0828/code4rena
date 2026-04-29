@@ -1,9 +1,12 @@
 """
 Sync Code4rena data from official website community CSVs into SQLite.
 
-Primary sources (documented in https://docs.code4rena.com/awarding/awarding-process):
-  - https://code4rena.com/community-resources/findings.csv
-  - https://code4rena.com/community-resources/contests.csv
+Primary sources (see Code4rena awarding docs):
+  https://docs.code4rena.com/awarding/awarding-process
+
+CSV endpoints:
+  https://code4rena.com/community-resources/findings.csv
+  https://code4rena.com/community-resources/contests.csv
 """
 
 from __future__ import annotations
@@ -94,7 +97,9 @@ def _severity_counts(finding_id: str) -> tuple[int, int, int]:
     return high, med, gas
 
 
+# pylint: disable-next=too-many-locals,too-many-statements
 def build_db(db_path: str, min_year: int) -> None:
+    """Download official CSVs and (re)build the SQLite schema and aggregates."""
     contests_text = _fetch_csv_text(OFFICIAL_CONTESTS_URL, timeout=120)
     findings_text = _fetch_csv_text(OFFICIAL_FINDINGS_URL, timeout=240)
 
@@ -171,7 +176,8 @@ def build_db(db_path: str, min_year: int) -> None:
             )
         )
 
-    # All-time leaderboard from official findings (contests with start_year >= min_year)
+    # All-time leaderboard from official findings
+    # (contests with start_year >= min_year)
     lb_agg: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "prize_money_usd": 0.0,
@@ -303,10 +309,14 @@ def build_db(db_path: str, min_year: int) -> None:
                 value TEXT NOT NULL
             );
 
-            CREATE INDEX idx_contest_handle_norm ON contest_results(handle_norm);
-            CREATE INDEX idx_contest_start_date ON contest_results(start_date);
-            CREATE INDEX idx_contest_sponsor ON contest_results(contest_sponsor);
-            CREATE INDEX idx_leaderboard_handle_norm ON leaderboard_snapshots(handle_norm);
+            CREATE INDEX idx_contest_handle_norm
+                ON contest_results(handle_norm);
+            CREATE INDEX idx_contest_start_date
+                ON contest_results(start_date);
+            CREATE INDEX idx_contest_sponsor
+                ON contest_results(contest_sponsor);
+            CREATE INDEX idx_leaderboard_handle_norm
+                ON leaderboard_snapshots(handle_norm);
             """
         )
 
@@ -365,9 +375,10 @@ def build_db(db_path: str, min_year: int) -> None:
         conn.executemany(
             """
             INSERT INTO contest_results (
-                contest_report_repo, contest_sponsor, contest_desc, start_date, end_date,
-                prize_pool_usd, handle, handle_norm, prize_money_usd,
-                total_reports, high_all, high_solo, med_all, med_solo, gas_all
+                contest_report_repo, contest_sponsor, contest_desc,
+                start_date, end_date, prize_pool_usd, handle, handle_norm,
+                prize_money_usd, total_reports, high_all, high_solo,
+                med_all, med_solo, gas_all
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             contest_result_rows,
@@ -376,8 +387,9 @@ def build_db(db_path: str, min_year: int) -> None:
         conn.executemany(
             """
             INSERT INTO leaderboard_snapshots (
-                handle, handle_norm, timeframe, period_start, period_end, prize_money_usd,
-                total_reports, high_all, high_solo, med_all, med_solo, gas_all
+                handle, handle_norm, timeframe, period_start, period_end,
+                prize_money_usd, total_reports, high_all, high_solo,
+                med_all, med_solo, gas_all
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             lb_rows,
@@ -386,7 +398,10 @@ def build_db(db_path: str, min_year: int) -> None:
         conn.executemany(
             "INSERT INTO import_meta(key, value) VALUES(?, ?)",
             [
-                ("generated_at_utc", datetime.now(timezone.utc).isoformat(timespec="seconds")),
+                (
+                    "generated_at_utc",
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
                 ("min_year", str(min_year)),
                 ("official_findings_url", OFFICIAL_FINDINGS_URL),
                 ("official_contests_url", OFFICIAL_CONTESTS_URL),
@@ -400,6 +415,7 @@ def build_db(db_path: str, min_year: int) -> None:
 
 
 def main() -> None:
+    """Parse CLI arguments and build the SQLite database."""
     parser = argparse.ArgumentParser(
         description=(
             "Download Code4rena official community CSVs from code4rena.com "
