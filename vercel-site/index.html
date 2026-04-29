@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Code4rena Leaderboard</title>
+    <meta
+      name="description"
+      content="Official Code4rena findings & contests — SQLite sync and Streamlit viewer."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f172a;
+        --card: rgba(30, 41, 59, 0.85);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #2dd4bf;
+        --accent-dim: #14b8a6;
+        --border: rgba(148, 163, 184, 0.25);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f8fafc;
+          --card: #ffffff;
+          --text: #0f172a;
+          --muted: #64748b;
+          --accent: #0d9488;
+          --accent-dim: #0f766e;
+          --border: #e2e8f0;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: radial-gradient(
+            ellipse 120% 80% at 50% -20%,
+            rgba(45, 212, 191, 0.15),
+            transparent
+          ),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.65;
+        padding: clamp(1.5rem, 4vw, 3rem);
+      }
+      main {
+        max-width: 40rem;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: clamp(1.75rem, 4vw, 2.25rem);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.5rem;
+      }
+      .lead {
+        color: var(--muted);
+        font-size: 1.05rem;
+        margin: 0 0 2rem;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1.35rem 1.5rem;
+        margin-bottom: 1.25rem;
+      }
+      .card h2 {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0 0 0.75rem;
+        font-weight: 600;
+      }
+      .card p {
+        margin: 0 0 0.75rem;
+      }
+      .card p:last-child {
+        margin-bottom: 0;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      a:hover {
+        text-decoration: underline;
+        color: var(--accent-dim);
+      }
+      ul {
+        margin: 0;
+        padding-left: 1.2rem;
+      }
+      li {
+        margin: 0.35rem 0;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.65rem 1.15rem;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #0f172a !important;
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      .btn:hover {
+        filter: brightness(1.08);
+        text-decoration: none;
+      }
+      .btn.secondary {
+        background: transparent;
+        color: var(--text) !important;
+        border: 1px solid var(--border);
+      }
+      .btn.secondary:hover {
+        background: rgba(148, 163, 184, 0.12);
+      }
+      footer {
+        margin-top: 2.5rem;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Code4rena Leaderboard</h1>
+      <p class="lead">
+        官方 CSV 同步到 SQLite，并用 Streamlit 做图表与表格。本页为部署在
+        Vercel 上的静态说明；交互式应用请用下方方式运行。
+      </p>
+
+      <div class="card">
+        <h2>为何不在此站打开 Streamlit？</h2>
+        <p>
+          Streamlit 是长连接 Web 应用，依赖本地或持久化 SQLite。
+          <strong>Vercel Serverless</strong> 不适合托管标准 Streamlit
+          进程（超时、无持久磁盘、架构不匹配）。
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>推荐：Streamlit Community Cloud</h2>
+        <p>连接 GitLab 仓库，云端运行 <code>streamlit_app.py</code>：</p>
+        <ul>
+          <li>
+            在
+            <a href="https://share.streamlit.io/">share.streamlit.io</a>
+            用 GitLab 登录并导入本仓库。
+          </li>
+          <li>Main file 填 <code>streamlit_app.py</code>，Python 版本与依赖按仓库配置。</li>
+          <li>数据库需随部署提供（例如构建时下载、或只读外链），详见仓库 README。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>本地运行</h2>
+        <p>
+          <code>poetry install</code> → <code>poetry run python sync_c4.py ...</code> →
+          <code>poetry run streamlit run streamlit_app.py</code>
+        </p>
+      </div>
+
+      <div class="actions">
+        <a
+          class="btn"
+          href="https://gitlab.com/liqingge/code4rena"
+          target="_blank"
+          rel="noopener noreferrer"
+          >在 GitLab 打开仓库</a
+        >
+        <a
+          class="btn secondary"
+          href="https://docs.streamlit.io/deploy/streamlit-community-cloud/get-started"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Streamlit Cloud 文档</a
+        >
+      </div>
+
+      <footer>
+        Static site for Vercel · Source:
+        <a href="https://gitlab.com/liqingge/code4rena">liqingge/code4rena</a>
+      </footer>
+    </main>
+  </body>
+</html>

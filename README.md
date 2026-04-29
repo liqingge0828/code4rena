@@ -39,6 +39,24 @@ poetry run streamlit run streamlit_app.py
 
 If your database is in a different path, set it in the Streamlit sidebar.
 
+## Deploy
+
+### Vercel (static landing page only)
+
+Streamlit is a long-lived Python app with WebSockets and (typically) a local SQLite file. **Vercel’s serverless model is not a good fit** for running `streamlit_app.py` directly.
+
+This repo includes a small static site under **`vercel-site/`** (single `index.html` + `vercel.json`) you can host on Vercel:
+
+1. In [Vercel](https://vercel.com), **Import** your GitLab project `liqingge/code4rena`.
+2. Open **Project → Settings → General → Root Directory**, set it to **`vercel-site`**, save.
+3. Deploy (default framework detection should serve the static `index.html`).
+
+If you import the repo **without** changing the root directory, Vercel may try to treat the Python/poetry layout as a deploy target and behave unexpectedly—always set **Root Directory** to `vercel-site` for this static page.
+
+### Streamlit app (recommended)
+
+Use **[Streamlit Community Cloud](https://share.streamlit.io/)** (GitLab sign-in): point the main file to `streamlit_app.py`, match Python 3.12+, and install dependencies from `pyproject.toml` / lockfile as documented there. You still need a **database strategy** on the host (e.g. bake a small read-only SQLite into the image, download CSVs at startup, or attach managed storage—Community Cloud’s free tier is ephemeral, so plan sync accordingly).
+
 ## Useful SQL
 
 明细（每条 finding）：
