@@ -18,3 +18,8 @@ dependencies = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+# Application repo: no installable Python package layout. Streamlit Cloud runs
+# `poetry install`, which otherwise fails with "No file/folder found for package".
+[tool.poetry]
+package-mode = false
