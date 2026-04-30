@@ -332,13 +332,15 @@ col2.metric("Unique handles", f"{agg['handle_norm'].nunique():,}")
 col3.metric("Unique contests", f"{agg['contest'].nunique():,}")
 col4.metric("Total payouts (USD)", fmt_usd(agg["usd_amount"].sum()))
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     [
         "Top Handles",
         "Contest Breakdown",
         "Data Table",
         "Monthly Income",
         "Yearly Income",
+        "Monthly Total Payout",
+        "Yearly Total Payout",
     ]
 )
 
@@ -350,16 +352,20 @@ with tab1:
         .sort_values("usd_amount", ascending=False)
         .head(top_n)
     )
+    by_handle_chart = by_handle.copy()
+    by_handle_chart["usd_compact"] = by_handle_chart["usd_amount"].map(fmt_usd)
     fig = px.bar(
-        by_handle,
+        by_handle_chart,
         x="handle_norm",
         y="usd_amount",
         labels={"usd_amount": "USD"},
         color="usd_amount",
         color_continuous_scale=CHART_COLOR_SCALE,
+        custom_data=["usd_compact"],
     )
     fig.update_yaxes(tickformat="~s")
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(hovertemplate="Handle=%{x}<br>USD=%{customdata[0]}<extra></extra>")
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_top_handles")
     payout_max = positive_max(by_handle["usd_amount"])
@@ -400,11 +406,13 @@ with tab2:
         .sort_values("total_payout_usd", ascending=False)
         .head(top_n)
     )
+    by_contest_chart = by_contest.copy()
+    by_contest_chart["usd_compact"] = by_contest_chart["total_payout_usd"].map(fmt_usd)
     fig = px.scatter(
-        by_contest,
+        by_contest_chart,
         x="unique_handles",
         y="total_payout_usd",
-        hover_data=["contest", "contest_title", "contest_sponsor"],
+        hover_data=["contest", "contest_title", "contest_sponsor", "usd_compact"],
         labels={"total_payout_usd": "USD"},
         color="total_payout_usd",
         color_continuous_scale="Viridis",
@@ -413,6 +421,15 @@ with tab2:
     scatter_outline = "rgba(15,23,42,0.78)" if chart_is_dark() else "white"
     fig.update_traces(
         marker=dict(size=12, line=dict(width=0.4, color=scatter_outline))
+    )
+    fig.update_traces(
+        hovertemplate=(
+            "Wardens=%{x}<br>"
+            "USD=%{customdata[3]}<br>"
+            "Contest ID=%{customdata[0]}<br>"
+            "Contest=%{customdata[1]}<br>"
+            "Sponsor=%{customdata[2]}<extra></extra>"
+        )
     )
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_contest_breakdown")
@@ -594,16 +611,20 @@ with tab4:
         },
         key="df_monthly_income",
     )
+    top_month_chart = top.copy()
+    top_month_chart["usd_compact"] = top_month_chart["usd_amount"].map(fmt_usd)
     fig = px.bar(
-        top,
+        top_month_chart,
         x="handle_norm",
         y="usd_amount",
         labels={"usd_amount": "USD"},
         color="usd_amount",
         color_continuous_scale=CHART_COLOR_SCALE,
+        custom_data=["usd_compact"],
     )
     fig.update_yaxes(tickformat="~s")
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(hovertemplate="Handle=%{x}<br>USD=%{customdata[0]}<extra></extra>")
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key=f"chart_monthly_top_{selected_month}")
 
@@ -651,15 +672,107 @@ with tab5:
         },
         key="df_yearly_income",
     )
+    top_year_chart = top.copy()
+    top_year_chart["usd_compact"] = top_year_chart["usd_amount"].map(fmt_usd)
     fig = px.bar(
-        top,
+        top_year_chart,
         x="handle_norm",
         y="usd_amount",
         labels={"usd_amount": "USD"},
         color="usd_amount",
         color_continuous_scale=CHART_COLOR_SCALE,
+        custom_data=["usd_compact"],
     )
     fig.update_yaxes(tickformat="~s")
     fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(hovertemplate="Handle=%{x}<br>USD=%{customdata[0]}<extra></extra>")
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key=f"chart_yearly_top_{selected_year}")
+
+with tab6:
+    st.subheader("Total payout by month (USD)")
+    monthly_total = (
+        agg.groupby(agg["contest_start"].dt.to_period("M"), as_index=False)["usd_amount"]
+        .sum()
+        .rename(columns={"contest_start": "month"})
+    )
+    monthly_total["month"] = monthly_total["month"].astype(str)
+    monthly_total = monthly_total.sort_values("month", ascending=False)
+
+    show = pd.DataFrame(
+        {
+            "Month": monthly_total["month"],
+            "Total payout (USD)": monthly_total["usd_amount"].map(fmt_usd),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Month": st.column_config.TextColumn("Month", width="small"),
+            "Total payout (USD)": st.column_config.TextColumn(
+                "Total payout (USD)", width="small"
+            ),
+        },
+        key="df_monthly_total_payout",
+    )
+
+    monthly_total_chart = monthly_total.sort_values("month", ascending=True).copy()
+    monthly_total_chart["usd_compact"] = monthly_total_chart["usd_amount"].map(fmt_usd)
+    fig = px.bar(
+        monthly_total_chart,
+        x="month",
+        y="usd_amount",
+        labels={"month": "Month", "usd_amount": "USD"},
+        color="usd_amount",
+        color_continuous_scale=CHART_COLOR_SCALE,
+        custom_data=["usd_compact"],
+    )
+    fig.update_yaxes(tickformat="~s")
+    fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(hovertemplate="Month=%{x}<br>USD=%{customdata[0]}<extra></extra>")
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_monthly_total_payout")
+
+with tab7:
+    st.subheader("Total payout by year (USD)")
+    yearly_total = (
+        agg.groupby(agg["contest_start"].dt.year, as_index=False)["usd_amount"]
+        .sum()
+        .rename(columns={"contest_start": "year"})
+    )
+    yearly_total["year"] = yearly_total["year"].astype("Int64").astype(str)
+    yearly_total = yearly_total.sort_values("year", ascending=False)
+
+    show = pd.DataFrame(
+        {
+            "Year": yearly_total["year"],
+            "Total payout (USD)": yearly_total["usd_amount"].map(fmt_usd),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Year": st.column_config.TextColumn("Year", width="small"),
+            "Total payout (USD)": st.column_config.TextColumn(
+                "Total payout (USD)", width="small"
+            ),
+        },
+        key="df_yearly_total_payout",
+    )
+
+    yearly_total_chart = yearly_total.sort_values("year", ascending=True).copy()
+    yearly_total_chart["usd_compact"] = yearly_total_chart["usd_amount"].map(fmt_usd)
+    fig = px.bar(
+        yearly_total_chart,
+        x="year",
+        y="usd_amount",
+        labels={"year": "Year", "usd_amount": "USD"},
+        color="usd_amount",
+        color_continuous_scale=CHART_COLOR_SCALE,
+        custom_data=["usd_compact"],
+    )
+    fig.update_yaxes(tickformat="~s")
+    fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(hovertemplate="Year=%{x}<br>USD=%{customdata[0]}<extra></extra>")
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_yearly_total_payout")
