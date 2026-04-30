@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -107,6 +108,20 @@ def format_compact(value: float) -> str:
 def fmt_usd(value: float) -> str:
     """Compact USD string (e.g. ``$1.23k``)."""
     return f"${format_compact(value)}"
+
+
+def bucket_span_months(series: pd.Series) -> pd.Series:
+    """Bucket participation span into interpretable month ranges."""
+    bins = [0, 3, 6, 12, 24, 48, np.inf]
+    labels = ["1-3m", "4-6m", "7-12m", "13-24m", "25-48m", "49m+"]
+    return pd.cut(series, bins=bins, labels=labels, include_lowest=True, right=True)
+
+
+def bucket_usd_payout(series: pd.Series) -> pd.Series:
+    """Bucket total USD payout into compact business-readable ranges."""
+    bins = [-1, 5_000, 20_000, 100_000, 500_000, np.inf]
+    labels = ["<5k", "5k-20k", "20k-100k", "100k-500k", "500k+"]
+    return pd.cut(series, bins=bins, labels=labels, include_lowest=True, right=True)
 
 
 def dataframe_pretty(
@@ -332,7 +347,7 @@ col2.metric("Unique handles", f"{agg['handle_norm'].nunique():,}")
 col3.metric("Unique contests", f"{agg['contest'].nunique():,}")
 col4.metric("Total payouts (USD)", fmt_usd(agg["usd_amount"].sum()))
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
     [
         "Top Handles",
         "Contest Breakdown",
@@ -341,6 +356,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
         "Yearly Income",
         "Monthly Total Payout",
         "Yearly Total Payout",
+        "Handle Participation Span",
     ]
 )
 
@@ -776,3 +792,154 @@ with tab7:
     fig.update_traces(hovertemplate="Year=%{x}<br>USD=%{customdata[0]}<extra></extra>")
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_yearly_total_payout")
+
+with tab8:
+    st.subheader("Handle participation span and payout (public contests)")
+    span_base = agg[["handle_norm", "handle", "contest_start", "usd_amount"]].copy()
+    span_base["month_period"] = span_base["contest_start"].dt.to_period("M")
+
+    by_span = (
+        span_base.groupby("handle_norm", as_index=False)
+        .agg(
+            handle=("handle", "first"),
+            first_contest=("contest_start", "min"),
+            last_contest=("contest_start", "max"),
+            total_payout_usd=("usd_amount", "sum"),
+            active_months=("month_period", "nunique"),
+        )
+        .sort_values("total_payout_usd", ascending=False)
+    )
+
+    first_p = by_span["first_contest"].dt.to_period("M")
+    last_p = by_span["last_contest"].dt.to_period("M")
+    by_span["span_months"] = (
+        (last_p.dt.year - first_p.dt.year) * 12
+        + (last_p.dt.month - first_p.dt.month)
+        + 1
+    )
+    by_span["first_month"] = first_p.astype(str)
+    by_span["last_month"] = last_p.astype(str)
+    by_span["span_bucket"] = bucket_span_months(by_span["span_months"])
+    by_span["payout_bucket"] = bucket_usd_payout(by_span["total_payout_usd"])
+
+    span_max = positive_max(by_span["span_months"].astype(float))
+    payout_max = positive_max(by_span["total_payout_usd"])
+
+    show = pd.DataFrame(
+        {
+            "Handle": by_span["handle"],
+            "First month": by_span["first_month"],
+            "Last month": by_span["last_month"],
+            "Span (months)": by_span["span_months"].astype(int),
+            "Active months": by_span["active_months"].astype(int),
+            "Span share": (by_span["span_months"] / span_max * 100.0).clip(0.0, 100.0),
+            "Payout share": (
+                by_span["total_payout_usd"] / payout_max * 100.0
+            ).clip(0.0, 100.0),
+            "Payout in span (USD)": by_span["total_payout_usd"].map(fmt_usd),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Handle": st.column_config.TextColumn("Handle", width="medium"),
+            "First month": st.column_config.TextColumn("First month", width="small"),
+            "Last month": st.column_config.TextColumn("Last month", width="small"),
+            "Span (months)": st.column_config.NumberColumn(
+                "Span (months)", width="small", format="%d"
+            ),
+            "Active months": st.column_config.NumberColumn(
+                "Active months", width="small", format="%d"
+            ),
+            "Span share": st.column_config.ProgressColumn(
+                "Span share",
+                min_value=0,
+                max_value=100,
+                format="%.0f%%",
+                help="Span length compared with longest span",
+                width="small",
+            ),
+            "Payout share": st.column_config.ProgressColumn(
+                "Payout share",
+                min_value=0,
+                max_value=100,
+                format="%.0f%%",
+                help="Payout compared with highest-payout handle",
+                width="small",
+            ),
+            "Payout in span (USD)": st.column_config.TextColumn(
+                "Payout in span (USD)", width="small"
+            ),
+        },
+        key="df_handle_participation_span",
+    )
+
+    heatmap_df = by_span.copy()
+    heatmap_df["total_payout_usd_bucket"] = (
+        heatmap_df["total_payout_usd"] / 1000.0
+    ).round() * 1000.0
+    fig = px.density_heatmap(
+        heatmap_df,
+        x="span_months",
+        y="total_payout_usd_bucket",
+        labels={
+            "span_months": "Span (months)",
+            "total_payout_usd_bucket": "USD (bucketed)",
+            "count": "Handles",
+        },
+        nbinsx=20,
+        nbinsy=18,
+        color_continuous_scale=CHART_COLOR_SCALE,
+    )
+    fig.update_yaxes(tickformat="~s")
+    fig.update_traces(
+        hovertemplate=(
+            "Span=%{x} months<br>"
+            "USD bucket=%{y:.3s}<br>"
+            "Handles=%{z}<extra></extra>"
+        )
+    )
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_handle_participation_span")
+
+    st.subheader("Top combinations (span bucket × payout bucket)")
+    combo = (
+        by_span.groupby(["span_bucket", "payout_bucket"], dropna=True)
+        .size()
+        .reset_index(name="handles")
+    )
+    combo["combo"] = combo["span_bucket"].astype(str) + " × " + combo["payout_bucket"].astype(
+        str
+    )
+    top_combo = combo.sort_values("handles", ascending=False).head(10)
+
+    combo_show = pd.DataFrame(
+        {
+            "Combination": top_combo["combo"],
+            "Handles": top_combo["handles"].astype(int),
+        }
+    )
+    dataframe_pretty(
+        combo_show,
+        column_config={
+            "Combination": st.column_config.TextColumn("Combination", width="large"),
+            "Handles": st.column_config.NumberColumn("Handles", width="small", format="%d"),
+        },
+        key="df_participation_span_top_combo",
+    )
+
+    combo_chart = top_combo.copy()
+    fig = px.bar(
+        combo_chart,
+        x="handles",
+        y="combo",
+        orientation="h",
+        labels={"handles": "Handles", "combo": "Span × Payout"},
+        color="handles",
+        color_continuous_scale=CHART_COLOR_SCALE,
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_yaxes(categoryorder="total ascending")
+    fig.update_traces(hovertemplate="Combo=%{y}<br>Handles=%{x}<extra></extra>")
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_participation_span_top_combo")
