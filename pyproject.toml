@@ -36,4 +36,5 @@ max-line-length = 100
 [tool.pylint.messages_control]
 disable = [
     "use-dict-literal",
+    "too-many-lines",
 ]

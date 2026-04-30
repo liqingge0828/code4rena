@@ -347,20 +347,34 @@ col2.metric("Unique handles", f"{agg['handle_norm'].nunique():,}")
 col3.metric("Unique contests", f"{agg['contest'].nunique():,}")
 col4.metric("Total payouts (USD)", fmt_usd(agg["usd_amount"].sum()))
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
-    [
-        "Top Handles",
-        "Contest Breakdown",
-        "Data Table",
-        "Monthly Income",
-        "Yearly Income",
-        "Monthly Total Payout",
-        "Yearly Total Payout",
-        "Handle Participation Span",
-    ]
+group_overview, group_payout, group_participants, group_span = st.tabs(
+    ["Overview", "Payout Trends", "Participants", "Participation Analysis"]
 )
 
-with tab1:
+with group_overview:
+    tab_top_handles, tab_contest_breakdown, tab_data_table = st.tabs(
+        ["Top Handles", "Contest Breakdown", "Data Table"]
+    )
+
+with group_payout:
+    tab_monthly_income, tab_yearly_income, tab_monthly_total, tab_yearly_total = st.tabs(
+        [
+            "Monthly Income",
+            "Yearly Income",
+            "Monthly Total Payout",
+            "Yearly Total Payout",
+        ]
+    )
+
+with group_participants:
+    tab_monthly_participants, tab_yearly_participants, tab_weekly_participants = st.tabs(
+        ["Monthly Participants", "Yearly Participants", "Weekly Participants"]
+    )
+
+with group_span:
+    (tab_handle_participation_span,) = st.tabs(["Handle Participation Span"])
+
+with tab_top_handles:
     st.subheader("Top handles by total payout (USD)")
     by_handle = (
         agg.groupby("handle_norm", as_index=False)["usd_amount"]
@@ -411,7 +425,7 @@ with tab1:
         key="df_top_handles",
     )
 
-with tab2:
+with tab_contest_breakdown:
     st.subheader("Contest payouts and participation")
     by_contest = (
         agg.groupby(["contest", "contest_title", "contest_sponsor"], as_index=False)
@@ -487,7 +501,7 @@ with tab2:
         key="df_contest_breakdown",
     )
 
-with tab3:
+with tab_data_table:
     st.subheader("Per handle per contest payouts")
     show_cols = [
         "contest",
@@ -583,7 +597,7 @@ with tab3:
         key="df_per_handle_contest",
     )
 
-with tab4:
+with tab_monthly_income:
     st.subheader("Handle income by month (USD)")
     agg_monthly = agg.copy()
     agg_monthly["month"] = agg_monthly["contest_start"].dt.to_period("M").astype(str)
@@ -644,7 +658,7 @@ with tab4:
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key=f"chart_monthly_top_{selected_month}")
 
-with tab5:
+with tab_yearly_income:
     st.subheader("Handle income by year (USD)")
     y = agg.copy()
     y["year"] = y["contest_start"].dt.year.astype(str)
@@ -705,7 +719,7 @@ with tab5:
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key=f"chart_yearly_top_{selected_year}")
 
-with tab6:
+with tab_monthly_total:
     st.subheader("Total payout by month (USD)")
     monthly_total = (
         agg.groupby(agg["contest_start"].dt.to_period("M"), as_index=False)["usd_amount"]
@@ -749,7 +763,7 @@ with tab6:
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_monthly_total_payout")
 
-with tab7:
+with tab_yearly_total:
     st.subheader("Total payout by year (USD)")
     yearly_total = (
         agg.groupby(agg["contest_start"].dt.year, as_index=False)["usd_amount"]
@@ -793,7 +807,176 @@ with tab7:
     apply_chart_colors(fig)
     st.plotly_chart(fig, width="stretch", key="chart_yearly_total_payout")
 
-with tab8:
+with tab_monthly_participants:
+    st.subheader("Monthly participants (unique handles)")
+    monthly_participants = (
+        agg.groupby(agg["contest_start"].dt.to_period("M"), as_index=False)["handle_norm"]
+        .nunique()
+        .rename(columns={"contest_start": "month", "handle_norm": "participants"})
+    )
+    monthly_participants["month"] = monthly_participants["month"].astype(str)
+    monthly_participants = monthly_participants.sort_values("month", ascending=False)
+
+    p_max = positive_max(monthly_participants["participants"].astype(float))
+    show = pd.DataFrame(
+        {
+            "Month": monthly_participants["month"],
+            "Participants": monthly_participants["participants"].astype(int),
+            "Share of max": (
+                monthly_participants["participants"] / p_max * 100.0
+            ).clip(0.0, 100.0),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Month": st.column_config.TextColumn("Month", width="small"),
+            "Participants": st.column_config.NumberColumn(
+                "Participants", width="small", format="%d"
+            ),
+            "Share of max": st.column_config.ProgressColumn(
+                "Share of max",
+                min_value=0,
+                max_value=100,
+                format="%.0f%%",
+                help="Participants vs highest-participation month",
+                width="small",
+            ),
+        },
+        key="df_monthly_participants",
+    )
+
+    monthly_participants_chart = monthly_participants.sort_values("month", ascending=True).copy()
+    fig = px.bar(
+        monthly_participants_chart,
+        x="month",
+        y="participants",
+        labels={"month": "Month", "participants": "Participants"},
+        color="participants",
+        color_continuous_scale=CHART_COLOR_SCALE,
+    )
+    fig.update_layout(xaxis_tickangle=-45, showlegend=False)
+    fig.update_traces(
+        hovertemplate="Month=%{x}<br>Participants=%{y}<extra></extra>"
+    )
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_monthly_participants")
+
+with tab_yearly_participants:
+    st.subheader("Yearly participants (unique handles)")
+    yearly_participants = (
+        agg.groupby(agg["contest_start"].dt.year, as_index=False)["handle_norm"]
+        .nunique()
+        .rename(columns={"contest_start": "year", "handle_norm": "participants"})
+    )
+    yearly_participants["year"] = yearly_participants["year"].astype("Int64").astype(str)
+    yearly_participants = yearly_participants.sort_values("year", ascending=False)
+
+    yp_max = positive_max(yearly_participants["participants"].astype(float))
+    show = pd.DataFrame(
+        {
+            "Year": yearly_participants["year"],
+            "Participants": yearly_participants["participants"].astype(int),
+            "Share of max": (
+                yearly_participants["participants"] / yp_max * 100.0
+            ).clip(0.0, 100.0),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Year": st.column_config.TextColumn("Year", width="small"),
+            "Participants": st.column_config.NumberColumn(
+                "Participants", width="small", format="%d"
+            ),
+            "Share of max": st.column_config.ProgressColumn(
+                "Share of max",
+                min_value=0,
+                max_value=100,
+                format="%.0f%%",
+                help="Participants vs highest-participation year",
+                width="small",
+            ),
+        },
+        key="df_yearly_participants",
+    )
+
+    yearly_participants_chart = yearly_participants.sort_values("year", ascending=True).copy()
+    fig = px.bar(
+        yearly_participants_chart,
+        x="year",
+        y="participants",
+        labels={"year": "Year", "participants": "Participants"},
+        color="participants",
+        color_continuous_scale=CHART_COLOR_SCALE,
+    )
+    fig.update_layout(showlegend=False)
+    fig.update_traces(
+        hovertemplate="Year=%{x}<br>Participants=%{y}<extra></extra>"
+    )
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_yearly_participants")
+
+with tab_weekly_participants:
+    st.subheader("Weekly participants (unique handles, ISO week)")
+    weekly_base = agg[["contest_start", "handle_norm"]].copy()
+    iso = weekly_base["contest_start"].dt.isocalendar()
+    weekly_base["week"] = (
+        iso["year"].astype(str) + "-W" + iso["week"].astype(int).astype(str).str.zfill(2)
+    )
+    weekly_participants = (
+        weekly_base.groupby("week", as_index=False)["handle_norm"]
+        .nunique()
+        .rename(columns={"handle_norm": "participants"})
+        .sort_values("week", ascending=False)
+    )
+
+    wp_max = positive_max(weekly_participants["participants"].astype(float))
+    show = pd.DataFrame(
+        {
+            "Week": weekly_participants["week"],
+            "Participants": weekly_participants["participants"].astype(int),
+            "Share of max": (
+                weekly_participants["participants"] / wp_max * 100.0
+            ).clip(0.0, 100.0),
+        }
+    )
+    dataframe_pretty(
+        show,
+        column_config={
+            "Week": st.column_config.TextColumn("Week", width="small"),
+            "Participants": st.column_config.NumberColumn(
+                "Participants", width="small", format="%d"
+            ),
+            "Share of max": st.column_config.ProgressColumn(
+                "Share of max",
+                min_value=0,
+                max_value=100,
+                format="%.0f%%",
+                help="Participants vs highest-participation week",
+                width="small",
+            ),
+        },
+        key="df_weekly_participants",
+    )
+
+    weekly_participants_chart = weekly_participants.sort_values("week", ascending=True).copy()
+    fig = px.bar(
+        weekly_participants_chart,
+        x="week",
+        y="participants",
+        labels={"week": "ISO Week", "participants": "Participants"},
+        color="participants",
+        color_continuous_scale=CHART_COLOR_SCALE,
+    )
+    fig.update_layout(showlegend=False, xaxis_tickangle=-45)
+    fig.update_traces(
+        hovertemplate="Week=%{x}<br>Participants=%{y}<extra></extra>"
+    )
+    apply_chart_colors(fig)
+    st.plotly_chart(fig, width="stretch", key="chart_weekly_participants")
+
+with tab_handle_participation_span:
     st.subheader("Handle participation span and payout (public contests)")
     span_base = agg[["handle_norm", "handle", "contest_start", "usd_amount"]].copy()
     span_base["month_period"] = span_base["contest_start"].dt.to_period("M")
